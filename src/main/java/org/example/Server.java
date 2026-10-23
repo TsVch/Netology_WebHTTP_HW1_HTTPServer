@@ -8,12 +8,14 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Server {
+
     private static final int THREAD_COUNT = 64;
     private static final int MAX_HEADER_SIZE = 64 * 1024;
     private static final int MAX_BODY_SIZE = 10 * 1024 * 1024;
@@ -21,7 +23,8 @@ public class Server {
     private final ExecutorService threadPool =
             Executors.newFixedThreadPool(THREAD_COUNT);
 
-    private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
+    private final Map<String, Handler> handlers =
+            new ConcurrentHashMap<>();
 
     public void addHandler(String method, String path, Handler handler) {
         if (method == null || path == null || handler == null) {
@@ -34,12 +37,14 @@ public class Server {
     }
 
     private String createKey(String method, String path) {
-        return method.toUpperCase() + " " + path;
+        return method.toUpperCase(Locale.ROOT) + " " + path;
     }
 
     public void listen(int port) {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Сервер запущен: http://localhost:" + port);
+            System.out.println(
+                    "Сервер запущен: http://localhost:" + port
+            );
 
             while (!serverSocket.isClosed()) {
                 Socket socket = serverSocket.accept();
@@ -68,16 +73,22 @@ public class Server {
             int matched = 0;
             int current;
 
+            // Читаем заголовки до CRLF CRLF.
             while ((current = input.read()) != -1) {
                 buffer.write(current);
 
                 if (buffer.size() > MAX_HEADER_SIZE) {
-                    sendError(output, 431, "Request Header Fields Too Large");
+                    sendError(
+                            output,
+                            431,
+                            "Request Header Fields Too Large"
+                    );
                     return;
                 }
 
                 if (current == delimiter[matched]) {
                     matched++;
+
                     if (matched == delimiter.length) {
                         break;
                     }
@@ -99,25 +110,27 @@ public class Server {
             int headerLength = headerBytes.length - delimiter.length;
 
             String headerText = new String(
-                    headerBytes, 0, headerLength, StandardCharsets.ISO_8859_1
+                    headerBytes,
+                    0,
+                    headerLength,
+                    StandardCharsets.ISO_8859_1
             );
 
             String[] lines = headerText.split("\r\n");
-            String[] requestLine = lines[0].split(" ");
+            String[] requestLine = lines[0].split(" ", 3);
 
             if (requestLine.length != 3
+                    || requestLine[0].isEmpty()
+                    || requestLine[1].isEmpty()
                     || !requestLine[2].startsWith("HTTP/")) {
                 sendError(output, 400, "Bad Request");
                 return;
             }
 
-            String method = requestLine[0].toUpperCase();
-            String path = requestLine[1];
+            String method = requestLine[0].toUpperCase(Locale.ROOT);
 
-            int queryIndex = path.indexOf('?');
-            if (queryIndex >= 0) {
-                path = path.substring(0, queryIndex);
-            }
+            // Важно: сохраняем исходный request-target с Query.
+            String requestTarget = requestLine[1];
 
             Map<String, String> headers = new ConcurrentHashMap<>();
 
@@ -126,8 +139,14 @@ public class Server {
 
                 if (colon > 0) {
                     String name = lines[i]
-                            .substring(0, colon).trim().toLowerCase();
-                    String value = lines[i].substring(colon + 1).trim();
+                            .substring(0, colon)
+                            .trim()
+                            .toLowerCase(Locale.ROOT);
+
+                    String value = lines[i]
+                            .substring(colon + 1)
+                            .trim();
+
                     headers.put(name, value);
                 }
             }
@@ -157,14 +176,18 @@ public class Server {
                 return;
             }
 
+            // Request самостоятельно разделяет путь и Query.
             Request request = new Request(
                     method,
-                    path,
+                    requestTarget,
                     headers,
                     new ByteArrayInputStream(body)
             );
 
-            Handler handler = handlers.get(createKey(method, path));
+            // Ищем обработчик по нормализованному пути без Query.
+            Handler handler = handlers.get(
+                    createKey(request.getMethod(), request.getPath())
+            );
 
             if (handler == null) {
                 sendError(output, 404, "Not Found");
@@ -175,8 +198,15 @@ public class Server {
             output.flush();
 
         } catch (IOException e) {
-            System.err.println("Ошибка обработки подключения: "
-                    + e.getMessage());
+            System.err.println(
+                    "Ошибка обработки подключения: " + e.getMessage()
+            );
+        } catch (IllegalArgumentException e) {
+            System.err.println(
+                    "Некорректный HTTP-запрос: " + e.getMessage()
+            );
+
+            // Соединение будет закрыто благодаря try-with-resources.
         }
     }
 

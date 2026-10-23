@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class Main {
+
     public static void main(String[] args) {
         Server server = new Server();
 
@@ -44,7 +45,17 @@ public class Main {
         });
 
         server.addHandler("GET", "/messages", (request, response) -> {
-            byte[] body = "Список сообщений".getBytes(StandardCharsets.UTF_8);
+            // Получаем первый параметр last из query-строки.
+            String last = request.getQueryParam("last");
+
+            String message;
+            if (last != null) {
+                message = "Список сообщений. Количество: " + last;
+            } else {
+                message = "Список сообщений";
+            }
+
+            byte[] body = message.getBytes(StandardCharsets.UTF_8);
 
             writeResponse(
                     response, 200, "OK",
