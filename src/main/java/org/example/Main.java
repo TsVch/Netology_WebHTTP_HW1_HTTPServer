@@ -43,8 +43,47 @@ public class Main {
             );
         });
 
+        server.addHandler("POST", "/upload", (request, response) -> {
+            StringBuilder result = new StringBuilder();
+
+            for (Part part : request.getParts()) {
+                result.append("Поле: ")
+                        .append(part.getName())
+                        .append('\n');
+
+                if (part.isFile()) {
+                    result.append("Тип: файл\n")
+                            .append("Имя файла: ")
+                            .append(part.getFileName())
+                            .append('\n')
+                            .append("Content-Type: ")
+                            .append(part.getContentType())
+                            .append('\n')
+                            .append("Размер: ")
+                            .append(part.getContent().length)
+                            .append(" байт\n");
+                } else {
+                    result.append("Тип: текстовое поле\n")
+                            .append("Значение: ")
+                            .append(part.getValue())
+                            .append('\n');
+                }
+
+                result.append("---\n");
+            }
+
+            byte[] body = result.toString()
+                    .getBytes(StandardCharsets.UTF_8);
+
+            writeResponse(
+                    response, 200, "OK",
+                    "text/plain; charset=UTF-8", body
+            );
+        });
+
         server.addHandler("GET", "/messages", (request, response) -> {
-            byte[] body = "Список сообщений".getBytes(StandardCharsets.UTF_8);
+            byte[] body = "Список сообщений"
+                    .getBytes(StandardCharsets.UTF_8);
 
             writeResponse(
                     response, 200, "OK",
