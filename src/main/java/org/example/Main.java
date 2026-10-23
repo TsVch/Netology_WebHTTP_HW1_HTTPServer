@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class Main {
+
     public static void main(String[] args) {
         Server server = new Server();
 
@@ -32,19 +33,38 @@ public class Main {
         });
 
         server.addHandler("POST", "/messages", (request, response) -> {
-            byte[] body = request.getBody().readAllBytes();
+            String contentType = request.getHeaders().entrySet().stream()
+                    .filter(entry ->
+                            entry.getKey().equalsIgnoreCase("content-type"))
+                    .map(java.util.Map.Entry::getValue)
+                    .findFirst()
+                    .orElse("");
+
+            String responseText;
+
+            if (contentType.split(";", 2)[0].trim()
+                    .equalsIgnoreCase("application/x-www-form-urlencoded")) {
+
+                responseText = "Получены параметры формы:\n"
+                        + "name = " + request.getPostParam("name") + "\n"
+                        + "message = " + request.getPostParam("message") + "\n"
+                        + "Все параметры = " + request.getPostParams();
+            } else {
+                byte[] body = request.getBody().readAllBytes();
+                responseText = "Получено сообщение: "
+                        + new String(body, StandardCharsets.UTF_8);
+            }
 
             writeResponse(
                     response, 200, "OK",
                     "text/plain; charset=UTF-8",
-                    ("Получено сообщение: "
-                            + new String(body, StandardCharsets.UTF_8))
-                            .getBytes(StandardCharsets.UTF_8)
+                    responseText.getBytes(StandardCharsets.UTF_8)
             );
         });
 
         server.addHandler("GET", "/messages", (request, response) -> {
-            byte[] body = "Список сообщений".getBytes(StandardCharsets.UTF_8);
+            byte[] body = "Список сообщений"
+                    .getBytes(StandardCharsets.UTF_8);
 
             writeResponse(
                     response, 200, "OK",
